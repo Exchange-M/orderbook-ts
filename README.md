@@ -19,6 +19,7 @@ const orderbook = new Orderbook();
 * TRADE_SIDE
 
 ASK: sell order
+
 BID: buy order
 
 ```ts
