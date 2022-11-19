@@ -8,6 +8,13 @@ class Orderbook {
 
   orderIdMap: {[key: number]: Order} = {};
 
+  getOrderbook() {
+    return {
+      asks: this.asks,
+      bids: this.bids,
+    };
+  }
+
   getAsks() {
     return this.asks;
   }

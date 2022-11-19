@@ -6,6 +6,10 @@ declare class Orderbook {
     orderIdMap: {
         [key: number]: Order;
     };
+    getOrderbook(): {
+        asks: Order[];
+        bids: Order[];
+    };
     getAsks(): Order[];
     getBids(): Order[];
     cancel(orderId: number): Order;
