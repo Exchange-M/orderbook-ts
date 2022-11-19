@@ -12,7 +12,7 @@ console.log(orderbook.getAsks());
 console.log(orderbook.getBids());
 console.log('=====================')
 
-const askOrder1 = orderbook.add(1, TRADE_SIDE.ASK, 80, 30);
+const askOrder1 = orderbook.add(5, TRADE_SIDE.ASK, 80, 30);
 
 console.log(askOrder1.order);
 console.log(askOrder1.trades);

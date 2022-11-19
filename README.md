@@ -14,7 +14,7 @@ import Orderbook, { TRADE_SIDE } from '../src';
 const orderbook = new Orderbook();
 ```
 
-### order
+### create order
 
 * TRADE_SIDE
 
@@ -43,12 +43,100 @@ add(
   }
 ```
 
-* used
+* used: ask -> bid
 
 ```ts
-const askOrder1 = orderbook.add(1, TRADE_SIDE.ASK, 100, 10);
-const askOrder2 = orderbook.add(2, TRADE_SIDE.ASK, 110, 10);
-const askOrder3 = orderbook.add(3, TRADE_SIDE.ASK, 100, 10);
+const order1 = orderbook.add(1, TRADE_SIDE.ASK, 100, 10);
+const order2 = orderbook.add(2, TRADE_SIDE.ASK, 110, 10);
+const order3 = orderbook.add(3, TRADE_SIDE.ASK, 100, 10);
+```
+
+```text
+asks: 110 -> 10 (2)
+      100 -> 20 (1, 3)
+---------------  
+bids: 
+```
+
+```ts
+const order4 = orderbook.add(4, TRADE_SIDE.BID, 110, 11);
+```
+
+```ts
+asks: 110 -> 10 (2)        110 -> 10 (2)
+      100 -> 20 (1, 3)     100 -> 9 (3)
+---------------         -> --------------
+bids: 110 -> 11 (4)       
+
+order5.trades: [
+  Trade {
+    orderId: 1,
+    tradePrice: Decimal { intPart: '100', decPart: '' },
+    tradeQuantity: Decimal { intPart: '10', decPart: '' },
+    tradeSide: 0,
+    tradeId: 1668825292207
+  }
+  Trade {
+    orderId: 3,
+    tradePrice: Decimal { intPart: '100', decPart: '' },
+    tradeQuantity: Decimal { intPart: '1', decPart: '' },
+    tradeSide: 0,
+    tradeId: 1668825292207
+  }
+]
+```
+
+* used: bid -> ask
+
+```ts
+const order1 = orderbook.add(1, TRADE_SIDE.BID, 90, 10);
+const order2 = orderbook.add(2, TRADE_SIDE.BID, 100, 10);
+const order3 = orderbook.add(3, TRADE_SIDE.BID, 80, 10);
+const order4 = orderbook.add(4, TRADE_SIDE.BID, 100, 10);
+```
+
+```text
+asks: 
+---------------  
+bids: 100 -> 20 (2, 4)  
+       90 -> 10 (1)
+       80 -> 10 (3)
+```
+
+```ts
+const order5 = orderbook.add(5, TRADE_SIDE.ASK, 80, 30);
+```
+
+```ts
+asks:  80 -> 30 (3)         
+---------------        ->  ---------         
+bids: 100 -> 20 (2, 4)      80 -> 10 (3)
+       90 -> 10 (1)         
+       80 -> 10 (3)        
+
+order5.trades: [
+  Trade {
+    orderId: 2,
+    tradePrice: Decimal { intPart: '100', decPart: '' },
+    tradeQuantity: Decimal { intPart: '10', decPart: '' },
+    tradeSide: 0,
+    tradeId: 1668825292207
+  }
+  Trade {
+    orderId: 4,
+    tradePrice: Decimal { intPart: '100', decPart: '' },
+    tradeQuantity: Decimal { intPart: '10', decPart: '' },
+    tradeSide: 0,
+    tradeId: 1668825292207
+  }
+    Trade {
+    orderId: 1,
+    tradePrice: Decimal { intPart: '90', decPart: '' },
+    tradeQuantity: Decimal { intPart: '10', decPart: '' },
+    tradeSide: 0,
+    tradeId: 1668825292207
+  }
+]
 ```
 
 ### get order

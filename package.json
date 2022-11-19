@@ -1,6 +1,6 @@
 {
-  "name": "orderbook",
-  "version": "1.0.0",
+  "name": "orderbook-match-engine",
+  "version": "0.1.0",
   "description": "orderbook matching engine",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
