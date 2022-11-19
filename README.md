@@ -3,13 +3,13 @@
 * install
 
 ```bash
-$ npm install orderbook
+$ npm install orderbook-match-engine
 ```
 
 * import & create instance  
 
 ```typescript
-import Orderbook, { TRADE_SIDE } from '../src';
+import Orderbook, { TRADE_SIDE } from 'orderbook-match-engine';
 
 const orderbook = new Orderbook();
 ```
