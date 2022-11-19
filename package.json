@@ -1,0 +1,16 @@
+{
+  "name": "orderbook",
+  "version": "1.0.0",
+  "description": "orderbook matching engine",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aficion360/decimal": "^1.0.0"
+  }
+}
