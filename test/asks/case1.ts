@@ -19,3 +19,7 @@ const { asks, bids } = orderbook.getOrderbook();
 
 console.log(asks.length === 3)
 console.log(bids.length === 0)
+
+console.log(asks[0].price === '100', asks[0].quantity === '20')
+console.log(asks[1].price === '110', asks[1].quantity === '10')
+console.log(asks[2].price === '120', asks[2].quantity === '20')

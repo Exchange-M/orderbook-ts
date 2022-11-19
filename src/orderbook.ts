@@ -22,7 +22,9 @@ class Orderbook {
   getAsks() {
     return Object
       .keys(this.quantityByPriceWithAsks)
-      .sort((a, b) => this.quantityByPriceWithAsks[a].sub(this.quantityByPriceWithAsks[b]).lte(0) ? -1 : 1)
+      .sort((a, b) => {
+        return parseFloat(a) - parseFloat(b);
+      })
       .slice(0, 15)
       .map(price => ({
         price,
@@ -33,7 +35,9 @@ class Orderbook {
   getBids() {
     return Object
       .keys(this.quantityByPriceWithBids)
-      .sort((a, b) => this.quantityByPriceWithBids[b].sub(this.quantityByPriceWithBids[a]).lte(0) ? -1 : 1)
+      .sort((a, b) => {
+        return parseFloat(b) - parseFloat(a);
+      })
       .slice(0, 15)
       .map(price => ({
           price,
