@@ -1,14 +1,20 @@
 {
   "name": "orderbook-match-engine",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "orderbook matching engine",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
     "build": "tsc"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["orderbook", "march", "engine", "jeongtae" ],
+  "author": "pjt3591oo",
+  "homepage": "https://github.com/Exchange-M/orderbook-ts",
+  "bugs": "pjt3591oo@gmail.com", 
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Exchange-M/orderbook-ts"
+  },
   "license": "ISC",
   "dependencies": {
     "@aficion360/decimal": "^1.0.0"

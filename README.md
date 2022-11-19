@@ -1,5 +1,7 @@
 # Orderbook Matching Engine
 
+go to [npm](https://www.npmjs.com/package/orderbook-match-engine)
+
 * install
 
 ```bash
