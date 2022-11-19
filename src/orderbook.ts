@@ -7,33 +7,62 @@ class Orderbook {
   private bids: Array<Order> = [] // 내림차순 - buy  - BID
 
   orderIdMap: {[key: number]: Order} = {};
+  
+  // which tree to use?
+  quantityByPriceWithAsks: {[key: string]: Decimal} = {};
+  quantityByPriceWithBids: {[key: string]: Decimal} = {};
 
   getOrderbook() {
     return {
-      asks: this.asks,
-      bids: this.bids,
+      asks: this.getAsks(),
+      bids: this.getBids(),
     };
   }
 
   getAsks() {
-    return this.asks;
+    return Object
+      .keys(this.quantityByPriceWithAsks)
+      .sort((a, b) => this.quantityByPriceWithAsks[a].sub(this.quantityByPriceWithAsks[b]).lte(0) ? -1 : 1)
+      .slice(0, 15)
+      .map(price => ({
+        price,
+        quantity: this.quantityByPriceWithAsks[price].toString(),
+      }));
   }
 
   getBids() {
-    return this.bids;
+    return Object
+      .keys(this.quantityByPriceWithBids)
+      .sort((a, b) => this.quantityByPriceWithBids[b].sub(this.quantityByPriceWithBids[a]).lte(0) ? -1 : 1)
+      .slice(0, 15)
+      .map(price => ({
+          price,
+          quantity: this.quantityByPriceWithBids[price].toString(),
+      }));
   }
 
   cancel(orderId: number): Order {
     const order: Order | null = this.orderIdMap[orderId];
-    
+    const price = (order.price.getValue() as number).toString();
+
     if (order?.side === TRADE_SIDE.BID) {
       const index = this.bids.findIndex(bid => bid.orderId === orderId);
       if (index < 0) throw new Error(`NOT FOUND ORDERID: ${orderId}`);
       this.bids = this.bids.slice(0, index).concat(this.bids.slice(index + 1, this.bids.length));
+      this.quantityByPriceWithBids[price] = this.quantityByPriceWithBids[price].sub(order.leaveQuantity);
     } else {
       const index = this.asks.findIndex(ask => ask.orderId === orderId);
       if (index < 0) throw new Error(`NOT FOUND ORDERID: ${orderId}`);
       this.asks = this.asks.slice(0, index).concat(this.asks.slice(index + 1, this.asks.length));
+      this.quantityByPriceWithAsks[price] = this.quantityByPriceWithAsks[price].sub(order.leaveQuantity);
+    }
+
+    if (this.quantityByPriceWithAsks[price]?.eq(0)) {
+      delete this.quantityByPriceWithAsks[price];
+    }
+
+    if (this.quantityByPriceWithBids[price]?.eq(0)) {
+      delete this.quantityByPriceWithBids[price];
     }
 
     delete this.orderIdMap[orderId];
@@ -60,8 +89,6 @@ class Orderbook {
         order.leaveQuantity = order.leaveQuantity.sub(matchQuantity);
         bestOrder.leaveQuantity = bestOrder.leaveQuantity.sub(matchQuantity);
         
-        // 채결 금액은 이미 오더북에 등록되어 있는 금액으로 채결한다.
-        // 만약 ASK에 80, 90원이 등록되어 있는 상태에서 100원에 BID를 넣더라도 80원에 채결된다.
         trades.push(
           new Trade(orderId, bestOrder.price, matchQuantity, side),
         ) 
@@ -72,10 +99,20 @@ class Orderbook {
           bestOrder = this.asks.length ? this.asks[0] : null;
         }
       }
-
+      
       if (order.leaveQuantity.gt(0)) {
         this.bids.push(order);
         this.bids.sort((a, b) => b.price.sub(a.price).getValue() as number); // 내림차순 정렬
+      }
+
+      this.quantityByPriceWithBids[price] = this.quantityByPriceWithBids[price] || new Decimal(0);
+      this.quantityByPriceWithBids[price] = this.quantityByPriceWithBids[price].add(order.leaveQuantity);
+      if (this.quantityByPriceWithBids[price].eq(0)) delete this.quantityByPriceWithBids[price];
+
+      for (const trade of trades) {
+        const tradePrice = (trade.tradePrice.getValue() as number).toString();
+        this.quantityByPriceWithAsks[tradePrice] = this.quantityByPriceWithAsks[tradePrice].sub(trade.tradeQuantity);
+        if (this.quantityByPriceWithAsks[tradePrice].eq(0)) {delete this.quantityByPriceWithAsks[tradePrice]}
       }
     } else { // 판매주문
       let bestOrder = this.bids.length ? this.bids[0] : null;
@@ -88,13 +125,11 @@ class Orderbook {
         order.leaveQuantity = order.leaveQuantity.sub(matchQuantity);
         bestOrder.leaveQuantity = bestOrder.leaveQuantity.sub(matchQuantity);
 
-        // 채결 금액은 이미 오더북에 등록되어 있는 금액으로 채결한다.
-        // 만약 BID에 100, 90원이 등록된 상태에서 80에 ASK를 넣더라도 100원, 90원 순으로 채결된다.
         trades.push(
           new Trade(orderId, bestOrder.price, matchQuantity, side),
         ) 
 
-        if (bestOrder.leaveQuantity.eq(0)) {
+        if (bestOrder.leaveQuantity.eq(new Decimal(0))) {
           this.bids.shift();
           delete this.orderIdMap[bestOrder.orderId];
           bestOrder = this.bids.length ? this.bids[0] : null;
@@ -105,9 +140,19 @@ class Orderbook {
         this.asks.push(order);
         this.asks.sort((a, b) => a.price.sub(b.price).getValue() as number); // 오름차순 정렬
       }
+
+      this.quantityByPriceWithAsks[price] = this.quantityByPriceWithAsks[price] || new Decimal(0);
+      this.quantityByPriceWithAsks[price] = this.quantityByPriceWithAsks[price].add(order.leaveQuantity);
+      if (this.quantityByPriceWithAsks[price].eq(0)) delete this.quantityByPriceWithAsks[price];
+
+      for (const trade of trades) {
+        const tradePrice = (trade.tradePrice.getValue() as number).toString();
+        this.quantityByPriceWithBids[tradePrice] = this.quantityByPriceWithBids[tradePrice].sub(trade.tradeQuantity);
+        if (this.quantityByPriceWithBids[tradePrice].eq(0)) {delete this.quantityByPriceWithBids[tradePrice];}
+      }
     }
 
-    if (order.leaveQuantity.gt(0)) {
+    if (order.leaveQuantity.gt(new Decimal(0))) {
       this.orderIdMap[order.orderId] = order;
     }
 
