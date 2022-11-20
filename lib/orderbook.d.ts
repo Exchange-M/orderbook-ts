@@ -1,6 +1,9 @@
 import { Decimal } from '@aficion360/decimal';
 import Trade, { TRADE_SIDE } from './trade';
 import Order, { STRING_NUMBER } from './order';
+export type OrderbookOptions = {
+    limit?: number;
+};
 declare class Orderbook {
     private asks;
     private bids;
@@ -13,6 +16,8 @@ declare class Orderbook {
     quantityByPriceWithBids: {
         [key: string]: Decimal;
     };
+    private limit;
+    constructor(options?: OrderbookOptions);
     getOrderbook(): {
         asks: {
             price: string;

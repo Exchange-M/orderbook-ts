@@ -1,4 +1,4 @@
-import Orderbook, { TRADE_SIDE } from '../../src';
+import  { Orderbook, TRADE_SIDE } from '../../src';
 
 const orderbook = new Orderbook();
 

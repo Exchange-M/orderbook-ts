@@ -1,6 +1,11 @@
 import { Decimal } from '@aficion360/decimal';
 import Trade, { TRADE_SIDE } from './trade';
 import Order, { STRING_NUMBER } from './order';
+import { mapSort } from './utils/array';
+
+export type OrderbookOptions = {
+  limit?: number,
+}
 
 class Orderbook {
   private asks: Array<Order> = [] // 오름차순 - sell - ASK
@@ -12,6 +17,12 @@ class Orderbook {
   quantityByPriceWithAsks: {[key: string]: Decimal} = {};
   quantityByPriceWithBids: {[key: string]: Decimal} = {};
 
+  private limit: number;
+
+  constructor (options?: OrderbookOptions) {
+    this.limit = options?.limit || 15;
+  }
+
   getOrderbook() {
     return {
       asks: this.getAsks(),
@@ -20,29 +31,11 @@ class Orderbook {
   }
 
   getAsks() {
-    return Object
-      .keys(this.quantityByPriceWithAsks)
-      .sort((a, b) => {
-        return parseFloat(a) - parseFloat(b);
-      })
-      .slice(0, 15)
-      .map(price => ({
-        price,
-        quantity: this.quantityByPriceWithAsks[price].toString(),
-      }));
+    return mapSort(this.limit, this.quantityByPriceWithAsks, 1)
   }
 
   getBids() {
-    return Object
-      .keys(this.quantityByPriceWithBids)
-      .sort((a, b) => {
-        return parseFloat(b) - parseFloat(a);
-      })
-      .slice(0, 15)
-      .map(price => ({
-          price,
-          quantity: this.quantityByPriceWithBids[price].toString(),
-      }));
+    return mapSort(this.limit, this.quantityByPriceWithBids, -1)
   }
 
   cancel(orderId: number): Order {
@@ -109,7 +102,7 @@ class Orderbook {
         this.bids.sort((a, b) => b.price.sub(a.price).getValue() as number); // 내림차순 정렬
       }
 
-      this.quantityByPriceWithBids[price] = this.quantityByPriceWithBids[price] || new Decimal(0);
+      this.quantityByPriceWithBids[price] ??= new Decimal(0);
       this.quantityByPriceWithBids[price] = this.quantityByPriceWithBids[price].add(order.leaveQuantity);
       if (this.quantityByPriceWithBids[price].eq(0)) delete this.quantityByPriceWithBids[price];
 
@@ -145,7 +138,7 @@ class Orderbook {
         this.asks.sort((a, b) => a.price.sub(b.price).getValue() as number); // 오름차순 정렬
       }
 
-      this.quantityByPriceWithAsks[price] = this.quantityByPriceWithAsks[price] || new Decimal(0);
+      this.quantityByPriceWithAsks[price] ??= new Decimal(0);
       this.quantityByPriceWithAsks[price] = this.quantityByPriceWithAsks[price].add(order.leaveQuantity);
       if (this.quantityByPriceWithAsks[price].eq(0)) delete this.quantityByPriceWithAsks[price];
 
