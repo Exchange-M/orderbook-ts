@@ -12,7 +12,7 @@ $ npm install orderbook-match-engine
 
 * Import 
 
-```typescript
+```ts
 import Engine, { 
   Orderbook, 
   Order, 
@@ -21,6 +21,22 @@ import Engine, {
   Trade, 
   STRING_NUMBER 
 } from 'orderbook-match-engine';
+```
+
+* require
+
+In a CommonJS environment, you can use it like this:
+
+```js
+const Engine = require('orderbook-match-engine').default;
+const {   
+  Orderbook, 
+  Order, 
+  TRADE_SIDE, 
+  IDataSourceHook, 
+  Trade, 
+  STRING_NUMBER  
+} = require('orderbook-match-engine');
 ```
 
 * interface
@@ -48,11 +64,11 @@ type OrderbookOptions = {
 ```ts
 class DataSourceHook implements IDataSourceHook {
   async beforeAddHook (orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER): Promise<boolean> {
-    console.log(`[before 주문등록] orderId: ${orderId}, side: ${side}, price: ${price}, quantity: ${quantity}`);
+    console.log(`[before order registry] orderId: ${orderId}, side: ${side}, price: ${price}, quantity: ${quantity}`);
     return true;
   }
   async afterAddHook(order: Order, trades: Trade[]): Promise<boolean> {
-    console.log(`[after 주문등록] 등록된 주문 아이디: ${order.orderId}, 채결된 주문 오더: ${trades.length}`);
+    console.log(`[after order registry] regitried orderId: ${order.orderId}, traded orderIds: ${trades.length}`);
     return true;
   }
   async beforeCancelHook(orderId: number): Promise<boolean> {
@@ -66,6 +82,34 @@ class DataSourceHook implements IDataSourceHook {
 const orderbook = new Orderbook({limit: 15});
 const dataSourceHook = new DataSourceHook();
 
+const engine = new Engine({
+  orderbook,
+  dataSourceHook,
+});
+```
+
+In a javascript environment, you can use it like this:
+
+```js
+class DataSourceHook {
+  async beforeAddHook (orderId, side, price, quantity) {
+    console.log(`[before order registry] orderId: ${orderId}, side: ${side}, price: ${price}, quantity: ${quantity}`);
+    return true;
+  }
+  async afterAddHook(order, trades) {
+    console.log(`[after order registry] regitried orderId: ${order.orderId}, traded orderIds: ${trades.length}`);
+    return true;
+  }
+  async beforeCancelHook(orderId) {
+    return true;
+  }
+  async afterCancelHook(order) {
+    return true;
+  }
+}
+
+const orderbook = new Orderbook();
+const dataSourceHook = new DataSourceHook();
 const engine = new Engine({
   orderbook,
   dataSourceHook,
@@ -325,11 +369,11 @@ import Engine, {
 
 class DataSourceHook implements IDataSourceHook {
   async beforeAddHook (orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER): Promise<boolean> {
-    console.log(`[before 주문등록] orderId: ${orderId}, side: ${side}, price: ${price}, quantity: ${quantity}`);
+    console.log(`[before order registry] orderId: ${orderId}, side: ${side}, price: ${price}, quantity: ${quantity}`);
     return true;
   }
   async afterAddHook(order: Order, trades: Trade[]): Promise<boolean> {
-    console.log(`[after 주문등록] 등록된 주문 아이디: ${order.orderId}, 채결된 주문 오더: ${trades.length}`);
+    console.log(`[after order registry] regitried orderId: ${order.orderId}, traded orderIds: ${trades.length}`);
     return true;
   }
   async beforeCancelHook(orderId: number): Promise<boolean> {
