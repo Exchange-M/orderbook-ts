@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc"
   },
-  "keywords": ["orderbook", "march", "engine", "jeongtae" ],
+  "keywords": ["orderbook", "match", "engine", "jeongtae" ],
   "author": "pjt3591oo",
   "homepage": "https://github.com/Exchange-M/orderbook-ts",
   "bugs": "pjt3591oo@gmail.com", 
