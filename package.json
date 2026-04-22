@@ -1,11 +1,13 @@
 {
   "name": "orderbook-match-engine",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "orderbook matching engine",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "scripts": {
-    "build": "tsc"
+    "prebuild": "rm -rf lib",
+    "build": "tsc",
+    "npm:publish": "npm publish --access public"
   },
   "keywords": ["orderbook", "match", "engine", "jeongtae" ],
   "author": "pjt3591oo",
