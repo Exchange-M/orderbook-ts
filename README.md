@@ -8,6 +8,24 @@ go to [npm](https://www.npmjs.com/package/orderbook-match-engine)
 $ npm install orderbook-match-engine
 ```
 
+## What's new in 2.0
+
+### Behavior changes (review before upgrading)
+
+Calls that previously failed silently or crashed later now throw immediately:
+
+- `add(orderId, ...)` — throws on duplicate `orderId`, `price <= 0`, or `quantity <= 0`
+- `cancel(orderId)` — throws if `orderId` is not in the book
+- Hooks — if `beforeAddHook` / `beforeCancelHook` resolves to `false`, the operation throws (`ADD_REJECTED_BY_HOOK` / `CANCEL_REJECTED_BY_HOOK`). Previously the return value was ignored.
+
+### New features
+
+- **Self-Trade Prevention** — opt-in per order via the new 5th argument to `add()`. See [STP](#self-trade-prevention).
+- **Event subscription** — `engine.events.on('trade' | 'orderAdded' | 'orderCancelled', fn)`. See [Events](#events).
+- **Richer `Trade` model** — `tradeId` (monotonic counter, no longer `Date.now()`), `sequence`, `makerOrderId`, `takerOrderId`, `makerSide`, `takerSide`. Legacy `orderId` and `tradeSide` remain as deprecated aliases pointing at the taker.
+
+The existing `Engine.add` / `Engine.cancel` / `getOrderbook` signatures are unchanged — these additions are backward compatible.
+
 ### provider
 
 * Import 
@@ -507,4 +525,102 @@ const askOrder1 = orderbook.add(1, TRADE_SIDE.ASK, 100, 10);
 orderbook.cancel(1);
 // or 
 await engine.cancel(1);
+```
+
+## Advanced
+
+### Self-Trade Prevention
+
+Prevent an account's order from matching its own resting order. Opt in per order via the 5th argument to `add()`:
+
+```ts
+import Engine, { Orderbook, TRADE_SIDE, STP_MODE } from 'orderbook-match-engine';
+
+const engine = new Engine({ orderbook: new Orderbook() });
+
+await engine.add(1, TRADE_SIDE.ASK, 100, 10, { accountId: 'alice' });
+
+// No STP — self-trade is allowed (default)
+await engine.add(2, TRADE_SIDE.BID, 100, 10, { accountId: 'alice' });
+
+// CANCEL_NEW — incoming order's remaining quantity is dropped on first self-match.
+// Trades against other accounts that occurred before the self-match are kept.
+await engine.add(3, TRADE_SIDE.BID, 100, 10, {
+  accountId: 'alice',
+  stpMode: STP_MODE.CANCEL_NEW,
+});
+```
+
+| Mode | Behavior |
+|---|---|
+| `STP_MODE.NONE` (default) | self-trade allowed |
+| `STP_MODE.CANCEL_NEW` | drop incoming order's remaining quantity on self-match |
+
+### Events
+
+Engine exposes a typed event emitter (no external dependency).
+
+```ts
+engine.events.on('trade',          (trade) => console.log('TRADE', trade.tradeId, trade.tradeQuantity.toString()));
+engine.events.on('orderAdded',     (order) => console.log('OPEN',  order.orderId));
+engine.events.on('orderCancelled', (order) => console.log('CXL',   order.orderId));
+```
+
+Emission order per `add()` call:
+
+1. `trade` events (one per fill, in match order) — fire **first** because they happened during execution
+2. `orderAdded` — fires only if the order rests on the book (`leaveQuantity > 0`)
+
+API: `on`, `off`, `once`, `emit`, `removeAllListeners`.
+
+### Trade fields
+
+```ts
+class Trade {
+  tradeId: number;        // monotonic counter, unique per Orderbook instance
+  sequence: number;       // event sequence; trades from the same add() share one sequence
+  makerOrderId: number;
+  takerOrderId: number;
+  makerSide: TRADE_SIDE;
+  takerSide: TRADE_SIDE;
+  tradePrice: Decimal;
+  tradeQuantity: Decimal;
+
+  /** @deprecated use takerOrderId */
+  orderId: number;
+  /** @deprecated use takerSide */
+  tradeSide: TRADE_SIDE;
+}
+```
+
+### Internals & Complexity
+
+The orderbook is built on:
+
+- `Map<priceKey, PriceLevel>` per side — O(1) price-level lookup
+- Sorted `PriceLevel[]` per side — best price always at index 0 (asks ascending, bids descending), binary-searched insert
+- Doubly-linked list of orders inside each `PriceLevel` — FIFO time priority, O(1) head pop
+- `Map<orderId, OrderNode>` — O(1) cancel via direct node reference
+
+Notation:
+- **N** = total resting orders
+- **L** = number of distinct price levels on a side
+- **M** = number of resting orders consumed during a single `add()`
+- **K** = number of listeners on a given event
+
+| Operation | Time | Space |
+|---|---|---|
+| `add` — order rests on existing price level (no match) | O(1) | O(1) |
+| `add` — order creates a new price level (no match) | O(log L) search + O(L) splice | O(1) |
+| `add` — order matches M resting orders | O(M) per fill + O(L) per emptied level | O(M) for returned trades |
+| `cancel` — level survives | **O(1)** | O(1) |
+| `cancel` — last order in level removed | O(log L) search + O(L) splice | O(1) |
+| `getOrderbook` / `getAsks` / `getBids` | O(`limit`) | O(`limit`) |
+| `Engine.add` / `Engine.cancel` | same as `Orderbook` + hook latency + O(K) emit | same |
+| `events.on` / `once` | O(1) | O(1) per listener |
+| `events.off` | O(K) | — |
+| `events.emit` | O(K) | — |
+| **Total orderbook memory** | — | **O(N + L)** |
+
+The hot paths (`cancel` of a non-emptying order, `add` against a single existing best level) are **O(1)**. The O(L) costs only appear when a price level is created or destroyed — `L` is typically small (hundreds to low thousands) compared to `N`.
 ```
