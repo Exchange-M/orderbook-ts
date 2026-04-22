@@ -1,6 +1,6 @@
 {
   "name": "orderbook-match-engine",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "orderbook matching engine",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -10,7 +10,7 @@
   "keywords": ["orderbook", "match", "engine", "jeongtae" ],
   "author": "pjt3591oo",
   "homepage": "https://github.com/Exchange-M/orderbook-ts",
-  "bugs": "pjt3591oo@gmail.com", 
+  "bugs": "https://github.com/Exchange-M/orderbook-ts/issues",
   "repository": {
     "type": "git",
     "url": "https://github.com/Exchange-M/orderbook-ts"
