@@ -1,7 +1,7 @@
 import { Decimal } from '@aficion360/decimal';
 import Trade, { TRADE_SIDE } from './trade';
 import Order, { STRING_NUMBER } from './order';
-import { mapSort } from './utils/array';
+import { PriceLevel, OrderNode } from './price-level';
 
 export type OrderbookOptions = {
   limit?: number,
@@ -11,19 +11,48 @@ const ZERO = new Decimal(0);
 
 const minDecimal = (a: Decimal, b: Decimal): Decimal => (a.lt(b) ? a : b);
 
+// Binary-search insert preserving order. ascending=true for asks, false for bids.
+const insertSorted = (arr: PriceLevel[], level: PriceLevel, ascending: boolean): void => {
+  let lo = 0;
+  let hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const goRight = ascending
+      ? arr[mid].price.lt(level.price)
+      : arr[mid].price.gt(level.price);
+    if (goRight) lo = mid + 1;
+    else hi = mid;
+  }
+  arr.splice(lo, 0, level);
+};
+
+const findSortedIndex = (arr: PriceLevel[], price: Decimal, ascending: boolean): number => {
+  let lo = 0;
+  let hi = arr.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (arr[mid].price.eq(price)) return mid;
+    const goRight = ascending
+      ? arr[mid].price.lt(price)
+      : arr[mid].price.gt(price);
+    if (goRight) lo = mid + 1;
+    else hi = mid;
+  }
+  return -1;
+};
+
 class Orderbook {
-  private asks: Array<Order> = [] // 오름차순 - sell - ASK
-  private bids: Array<Order> = [] // 내림차순 - buy  - BID
+  // best at index 0
+  private askLevels: Map<string, PriceLevel> = new Map();
+  private askSorted: PriceLevel[] = [];   // ascending
+  private bidLevels: Map<string, PriceLevel> = new Map();
+  private bidSorted: PriceLevel[] = [];   // descending
 
-  orderIdMap: {[key: number]: Order} = {};
-
-  // which tree to use?
-  quantityByPriceWithAsks: {[key: string]: Decimal} = {};
-  quantityByPriceWithBids: {[key: string]: Decimal} = {};
+  private orderIdMap: Map<number, OrderNode> = new Map();
 
   private limit: number;
 
-  constructor (options?: OrderbookOptions) {
+  constructor(options?: OrderbookOptions) {
     this.limit = options?.limit || 15;
   }
 
@@ -35,46 +64,46 @@ class Orderbook {
   }
 
   getAsks() {
-    return mapSort(this.limit, this.quantityByPriceWithAsks, 1)
+    return this.snapshot(this.askSorted);
   }
 
   getBids() {
-    return mapSort(this.limit, this.quantityByPriceWithBids, -1)
+    return this.snapshot(this.bidSorted);
+  }
+
+  private snapshot(sorted: PriceLevel[]) {
+    const out: Array<{ price: string; quantity: string }> = [];
+    const n = Math.min(this.limit, sorted.length);
+    for (let i = 0; i < n; i++) {
+      out.push({
+        price: sorted[i].priceKey,
+        quantity: sorted[i].totalQuantity.toString(),
+      });
+    }
+    return out;
   }
 
   cancel(orderId: number): Order {
-    const order = this.orderIdMap[orderId];
-    if (!order) {
+    const node = this.orderIdMap.get(orderId);
+    if (!node) {
       throw new Error(`NOT FOUND ORDERID: ${orderId}`);
     }
 
-    const price = order.price.toString();
+    const level = node.level;
+    const order = node.order;
 
-    if (order.side === TRADE_SIDE.BID) {
-      const index = this.bids.findIndex(bid => bid.orderId === orderId);
-      if (index < 0) throw new Error(`NOT FOUND ORDERID: ${orderId}`);
-      this.bids = this.bids.slice(0, index).concat(this.bids.slice(index + 1, this.bids.length));
-      this.quantityByPriceWithBids[price] = this.quantityByPriceWithBids[price].sub(order.leaveQuantity);
-      if (this.quantityByPriceWithBids[price].eq(ZERO)) {
-        delete this.quantityByPriceWithBids[price];
-      }
-    } else {
-      const index = this.asks.findIndex(ask => ask.orderId === orderId);
-      if (index < 0) throw new Error(`NOT FOUND ORDERID: ${orderId}`);
-      this.asks = this.asks.slice(0, index).concat(this.asks.slice(index + 1, this.asks.length));
-      this.quantityByPriceWithAsks[price] = this.quantityByPriceWithAsks[price].sub(order.leaveQuantity);
-      if (this.quantityByPriceWithAsks[price].eq(ZERO)) {
-        delete this.quantityByPriceWithAsks[price];
-      }
+    level.removeNode(node);
+    this.orderIdMap.delete(orderId);
+
+    if (level.isEmpty()) {
+      this.removeLevel(order.side, level);
     }
-
-    delete this.orderIdMap[orderId];
 
     return order;
   }
 
   add(orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER) {
-    if (this.orderIdMap[orderId]) {
+    if (this.orderIdMap.has(orderId)) {
       throw new Error(`DUPLICATE ORDERID: ${orderId}`);
     }
 
@@ -87,92 +116,70 @@ class Orderbook {
       throw new Error('quantity must be greater than 0');
     }
 
-    const priceKey = order.price.toString();
-    const trades: Array<Trade> = [];
+    const trades: Trade[] = [];
+    const oppositeSide = side === TRADE_SIDE.BID ? TRADE_SIDE.ASK : TRADE_SIDE.BID;
+    const oppositeSorted = side === TRADE_SIDE.BID ? this.askSorted : this.bidSorted;
 
-    if (side === TRADE_SIDE.BID) { // 구매주문
-      let bestOrder = this.asks.length ? this.asks[0] : null;
+    while (oppositeSorted.length > 0 && order.leaveQuantity.gt(ZERO)) {
+      const bestLevel = oppositeSorted[0];
+      const crosses = side === TRADE_SIDE.BID
+        ? bestLevel.price.lte(order.price)
+        : bestLevel.price.gte(order.price);
+      if (!crosses) break;
 
-      while (bestOrder?.price.lte(order.price) && order.leaveQuantity.gt(ZERO)) {
-        const matchQuantity = minDecimal(bestOrder.leaveQuantity, order.leaveQuantity);
+      while (bestLevel.head && order.leaveQuantity.gt(ZERO)) {
+        const headOrder = bestLevel.head.order;
+        const matchQty = minDecimal(headOrder.leaveQuantity, order.leaveQuantity);
 
-        order.leaveQuantity = order.leaveQuantity.sub(matchQuantity);
-        bestOrder.leaveQuantity = bestOrder.leaveQuantity.sub(matchQuantity);
+        order.leaveQuantity = order.leaveQuantity.sub(matchQty);
+        const { order: matched, fullyFilled } = bestLevel.consumeHead(matchQty);
 
-        trades.push(
-          new Trade(orderId, bestOrder.price, matchQuantity, side),
-        )
+        trades.push(new Trade(orderId, bestLevel.price, matchQty, side));
 
-        if (bestOrder.leaveQuantity.eq(ZERO)) {
-          this.asks.shift();
-          delete this.orderIdMap[bestOrder.orderId];
-          bestOrder = this.asks.length ? this.asks[0] : null;
+        if (fullyFilled) {
+          this.orderIdMap.delete(matched.orderId);
         }
       }
 
-      if (order.leaveQuantity.gt(ZERO)) {
-        this.bids.push(order);
-        this.bids.sort((a, b) => {
-          if (a.price.gt(b.price)) return -1;
-          if (a.price.lt(b.price)) return 1;
-          return 0;
-        });
-        this.quantityByPriceWithBids[priceKey] ??= new Decimal(0);
-        this.quantityByPriceWithBids[priceKey] = this.quantityByPriceWithBids[priceKey].add(order.leaveQuantity);
-      }
-
-      for (const trade of trades) {
-        const tradePrice = trade.tradePrice.toString();
-        this.quantityByPriceWithAsks[tradePrice] = this.quantityByPriceWithAsks[tradePrice].sub(trade.tradeQuantity);
-        if (this.quantityByPriceWithAsks[tradePrice].eq(ZERO)) { delete this.quantityByPriceWithAsks[tradePrice] }
-      }
-    } else { // 판매주문
-      let bestOrder = this.bids.length ? this.bids[0] : null;
-
-      while (bestOrder?.price.gte(order.price) && order.leaveQuantity.gt(ZERO)) {
-        const matchQuantity = minDecimal(bestOrder.leaveQuantity, order.leaveQuantity);
-
-        order.leaveQuantity = order.leaveQuantity.sub(matchQuantity);
-        bestOrder.leaveQuantity = bestOrder.leaveQuantity.sub(matchQuantity);
-
-        trades.push(
-          new Trade(orderId, bestOrder.price, matchQuantity, side),
-        )
-
-        if (bestOrder.leaveQuantity.eq(ZERO)) {
-          this.bids.shift();
-          delete this.orderIdMap[bestOrder.orderId];
-          bestOrder = this.bids.length ? this.bids[0] : null;
-        }
-      }
-
-      if (order.leaveQuantity.gt(ZERO)) {
-        this.asks.push(order);
-        this.asks.sort((a, b) => {
-          if (a.price.gt(b.price)) return 1;
-          if (a.price.lt(b.price)) return -1;
-          return 0;
-        });
-        this.quantityByPriceWithAsks[priceKey] ??= new Decimal(0);
-        this.quantityByPriceWithAsks[priceKey] = this.quantityByPriceWithAsks[priceKey].add(order.leaveQuantity);
-      }
-
-      for (const trade of trades) {
-        const tradePrice = trade.tradePrice.toString();
-        this.quantityByPriceWithBids[tradePrice] = this.quantityByPriceWithBids[tradePrice].sub(trade.tradeQuantity);
-        if (this.quantityByPriceWithBids[tradePrice].eq(ZERO)) { delete this.quantityByPriceWithBids[tradePrice]; }
+      if (bestLevel.isEmpty()) {
+        oppositeSorted.shift();
+        (oppositeSide === TRADE_SIDE.BID ? this.bidLevels : this.askLevels).delete(bestLevel.priceKey);
       }
     }
 
     if (order.leaveQuantity.gt(ZERO)) {
-      this.orderIdMap[order.orderId] = order;
+      const level = this.getOrCreateLevel(side, order.price);
+      const node = level.push(order);
+      this.orderIdMap.set(orderId, node);
     }
 
-    return {
-      order, trades
-    };
+    return { order, trades };
   }
 
+  private getOrCreateLevel(side: TRADE_SIDE, price: Decimal): PriceLevel {
+    const map = side === TRADE_SIDE.BID ? this.bidLevels : this.askLevels;
+    const sorted = side === TRADE_SIDE.BID ? this.bidSorted : this.askSorted;
+    const ascending = side === TRADE_SIDE.ASK;
+
+    const key = price.toString();
+    const existing = map.get(key);
+    if (existing) return existing;
+
+    const level = new PriceLevel(price);
+    map.set(key, level);
+    insertSorted(sorted, level, ascending);
+    return level;
+  }
+
+  private removeLevel(side: TRADE_SIDE, level: PriceLevel): void {
+    const map = side === TRADE_SIDE.BID ? this.bidLevels : this.askLevels;
+    const sorted = side === TRADE_SIDE.BID ? this.bidSorted : this.askSorted;
+    const ascending = side === TRADE_SIDE.ASK;
+
+    map.delete(level.priceKey);
+    const idx = findSortedIndex(sorted, level.price, ascending);
+    if (idx >= 0) sorted.splice(idx, 1);
+  }
 }
 
 export default Orderbook;
