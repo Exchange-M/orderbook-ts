@@ -28,14 +28,24 @@ class Engine {
   }
 
   async cancel(orderId: number) {
-    await this.dataSourceHook?.beforeCancelHook(orderId);
+    if (this.dataSourceHook) {
+      const proceed = await this.dataSourceHook.beforeCancelHook(orderId);
+      if (proceed === false) {
+        throw new Error(`CANCEL REJECTED BY HOOK: ${orderId}`);
+      }
+    }
     const order = this.orderbook.cancel(orderId);
     await this.dataSourceHook?.afterCancelHook(order);
     return order;
   }
 
   async add(orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER): Promise<{ order: Order; trades: Array<Trade>; }> {
-    await this.dataSourceHook?.beforeAddHook(orderId, side, price, quantity);
+    if (this.dataSourceHook) {
+      const proceed = await this.dataSourceHook.beforeAddHook(orderId, side, price, quantity);
+      if (proceed === false) {
+        throw new Error(`ADD REJECTED BY HOOK: ${orderId}`);
+      }
+    }
     const { order, trades } = this.orderbook.add(orderId, side, price, quantity);
     await this.dataSourceHook?.afterAddHook(order, trades);
     return { order, trades };
