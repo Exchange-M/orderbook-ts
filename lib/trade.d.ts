@@ -4,11 +4,18 @@ export declare enum TRADE_SIDE {
     BID = 1
 }
 declare class Trade {
-    orderId: number;
+    tradeId: number;
+    sequence: number;
+    makerOrderId: number;
+    takerOrderId: number;
+    makerSide: TRADE_SIDE;
+    takerSide: TRADE_SIDE;
     tradePrice: Decimal;
     tradeQuantity: Decimal;
+    /** @deprecated Use takerOrderId. Kept for backward compatibility. */
+    orderId: number;
+    /** @deprecated Use takerSide. Kept for backward compatibility. */
     tradeSide: TRADE_SIDE;
-    tradeId: number;
-    constructor(orderId: number, tradePrice: Decimal, tradeQuantity: Decimal, tradeSide: TRADE_SIDE);
+    constructor(tradeId: number, sequence: number, makerOrderId: number, takerOrderId: number, makerSide: TRADE_SIDE, tradePrice: Decimal, tradeQuantity: Decimal);
 }
 export default Trade;

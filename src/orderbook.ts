@@ -1,6 +1,6 @@
 import { Decimal } from '@aficion360/decimal';
 import Trade, { TRADE_SIDE } from './trade';
-import Order, { STRING_NUMBER } from './order';
+import Order, { STRING_NUMBER, OrderOptions, STP_MODE } from './order';
 import { PriceLevel, OrderNode } from './price-level';
 
 export type OrderbookOptions = {
@@ -11,7 +11,6 @@ const ZERO = new Decimal(0);
 
 const minDecimal = (a: Decimal, b: Decimal): Decimal => (a.lt(b) ? a : b);
 
-// Binary-search insert preserving order. ascending=true for asks, false for bids.
 const insertSorted = (arr: PriceLevel[], level: PriceLevel, ascending: boolean): void => {
   let lo = 0;
   let hi = arr.length;
@@ -49,6 +48,9 @@ class Orderbook {
   private bidSorted: PriceLevel[] = [];   // descending
 
   private orderIdMap: Map<number, OrderNode> = new Map();
+
+  private nextTradeId = 1;
+  private nextSequence = 1;
 
   private limit: number;
 
@@ -99,15 +101,22 @@ class Orderbook {
       this.removeLevel(order.side, level);
     }
 
+    this.nextSequence++;
     return order;
   }
 
-  add(orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER) {
+  add(
+    orderId: number,
+    side: TRADE_SIDE,
+    price: STRING_NUMBER,
+    quantity: STRING_NUMBER,
+    options?: OrderOptions,
+  ) {
     if (this.orderIdMap.has(orderId)) {
       throw new Error(`DUPLICATE ORDERID: ${orderId}`);
     }
 
-    const order = new Order(orderId, side, price, quantity);
+    const order = new Order(orderId, side, price, quantity, options);
 
     if (!order.price.gt(ZERO)) {
       throw new Error('price must be greater than 0');
@@ -116,9 +125,12 @@ class Orderbook {
       throw new Error('quantity must be greater than 0');
     }
 
+    const sequence = this.nextSequence++;
     const trades: Trade[] = [];
     const oppositeSide = side === TRADE_SIDE.BID ? TRADE_SIDE.ASK : TRADE_SIDE.BID;
     const oppositeSorted = side === TRADE_SIDE.BID ? this.askSorted : this.bidSorted;
+
+    let stpTriggered = false;
 
     while (oppositeSorted.length > 0 && order.leaveQuantity.gt(ZERO)) {
       const bestLevel = oppositeSorted[0];
@@ -129,12 +141,31 @@ class Orderbook {
 
       while (bestLevel.head && order.leaveQuantity.gt(ZERO)) {
         const headOrder = bestLevel.head.order;
-        const matchQty = minDecimal(headOrder.leaveQuantity, order.leaveQuantity);
 
+        if (
+          order.accountId !== undefined &&
+          headOrder.accountId !== undefined &&
+          headOrder.accountId === order.accountId &&
+          order.stpMode === STP_MODE.CANCEL_NEW
+        ) {
+          order.leaveQuantity = ZERO;
+          stpTriggered = true;
+          break;
+        }
+
+        const matchQty = minDecimal(headOrder.leaveQuantity, order.leaveQuantity);
         order.leaveQuantity = order.leaveQuantity.sub(matchQty);
         const { order: matched, fullyFilled } = bestLevel.consumeHead(matchQty);
 
-        trades.push(new Trade(orderId, bestLevel.price, matchQty, side));
+        trades.push(new Trade(
+          this.nextTradeId++,
+          sequence,
+          matched.orderId,
+          orderId,
+          oppositeSide,
+          bestLevel.price,
+          matchQty,
+        ));
 
         if (fullyFilled) {
           this.orderIdMap.delete(matched.orderId);
@@ -145,6 +176,8 @@ class Orderbook {
         oppositeSorted.shift();
         (oppositeSide === TRADE_SIDE.BID ? this.bidLevels : this.askLevels).delete(bestLevel.priceKey);
       }
+
+      if (stpTriggered) break;
     }
 
     if (order.leaveQuantity.gt(ZERO)) {

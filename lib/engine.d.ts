@@ -1,6 +1,7 @@
-import Order, { STRING_NUMBER } from './order';
+import Order, { STRING_NUMBER, OrderOptions } from './order';
 import Trade, { TRADE_SIDE } from './trade';
 import Orderbook from "./orderbook";
+import { TypedEventEmitter, EngineEvents } from './events';
 export interface IDataSourceHook {
     beforeAddHook: (orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER) => Promise<boolean>;
     afterAddHook: (order: Order, trades: Array<Trade>) => Promise<boolean>;
@@ -14,6 +15,7 @@ export type EngineOptions = {
 declare class Engine {
     private orderbook;
     private dataSourceHook?;
+    readonly events: TypedEventEmitter<EngineEvents>;
     constructor(options: EngineOptions);
     getOrderbook(): {
         asks: {
@@ -26,7 +28,7 @@ declare class Engine {
         }[];
     };
     cancel(orderId: number): Promise<Order>;
-    add(orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER): Promise<{
+    add(orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER, options?: OrderOptions): Promise<{
         order: Order;
         trades: Array<Trade>;
     }>;

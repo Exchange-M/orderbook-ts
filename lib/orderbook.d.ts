@@ -1,5 +1,5 @@
 import Trade, { TRADE_SIDE } from './trade';
-import Order, { STRING_NUMBER } from './order';
+import Order, { STRING_NUMBER, OrderOptions } from './order';
 export type OrderbookOptions = {
     limit?: number;
 };
@@ -9,6 +9,8 @@ declare class Orderbook {
     private bidLevels;
     private bidSorted;
     private orderIdMap;
+    private nextTradeId;
+    private nextSequence;
     private limit;
     constructor(options?: OrderbookOptions);
     getOrderbook(): {
@@ -31,7 +33,7 @@ declare class Orderbook {
     }[];
     private snapshot;
     cancel(orderId: number): Order;
-    add(orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER): {
+    add(orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER, options?: OrderOptions): {
         order: Order;
         trades: Trade[];
     };

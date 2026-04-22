@@ -1,6 +1,7 @@
-import Order, { STRING_NUMBER } from './order';
+import Order, { STRING_NUMBER, OrderOptions } from './order';
 import Trade, { TRADE_SIDE } from './trade';
 import Orderbook from "./orderbook"
+import { TypedEventEmitter, EngineEvents } from './events';
 
 export interface IDataSourceHook {
   beforeAddHook: (orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER) => Promise<boolean>;
@@ -17,8 +18,9 @@ export type EngineOptions = {
 class Engine {
   private orderbook: Orderbook;
   private dataSourceHook?: IDataSourceHook;
+  readonly events: TypedEventEmitter<EngineEvents> = new TypedEventEmitter<EngineEvents>();
 
-  constructor (options: EngineOptions) {
+  constructor(options: EngineOptions) {
     this.orderbook = options.orderbook;
     this.dataSourceHook = options?.dataSourceHook;
   }
@@ -36,18 +38,27 @@ class Engine {
     }
     const order = this.orderbook.cancel(orderId);
     await this.dataSourceHook?.afterCancelHook(order);
+    this.events.emit('orderCancelled', order);
     return order;
   }
 
-  async add(orderId: number, side: TRADE_SIDE, price: STRING_NUMBER, quantity: STRING_NUMBER): Promise<{ order: Order; trades: Array<Trade>; }> {
+  async add(
+    orderId: number,
+    side: TRADE_SIDE,
+    price: STRING_NUMBER,
+    quantity: STRING_NUMBER,
+    options?: OrderOptions,
+  ): Promise<{ order: Order; trades: Array<Trade>; }> {
     if (this.dataSourceHook) {
       const proceed = await this.dataSourceHook.beforeAddHook(orderId, side, price, quantity);
       if (proceed === false) {
         throw new Error(`ADD REJECTED BY HOOK: ${orderId}`);
       }
     }
-    const { order, trades } = this.orderbook.add(orderId, side, price, quantity);
+    const { order, trades } = this.orderbook.add(orderId, side, price, quantity, options);
     await this.dataSourceHook?.afterAddHook(order, trades);
+    for (const t of trades) this.events.emit('trade', t);
+    if (order.leaveQuantity.gt(0)) this.events.emit('orderAdded', order);
     return { order, trades };
   }
 }
